@@ -7,7 +7,20 @@ async function bootstrap() {
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
 
-  app.enableCors({ origin: '*' }); // depois trocamos pela URL da Vercel
+  // Restringe CORS usando a variável de ambiente FRONTEND_ORIGIN
+  // Aceita múltiplos domínios separados por vírgula (ex: "https://a.com,https://b.com")
+  const frontendOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
+  const allowedOrigins = frontendOrigin.split(',').map((s) => s.trim());
+
+  app.enableCors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error('Not allowed by CORS'));
+    },
+  });
+
+  console.log('CORS allowed origins:', allowedOrigins);
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
