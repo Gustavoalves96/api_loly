@@ -1,6 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import * as jwt from 'jsonwebtoken';
+import { Request, Response, NextFunction } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -21,6 +23,26 @@ async function bootstrap() {
   });
 
   console.log('CORS allowed origins:', allowedOrigins);
+
+  // Middleware simples para proteger rotas com JWT. Exclui /auth routes.
+  const jwtSecret = process.env.JWT_SECRET || 'default_jwt_secret';
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith('/auth')) return next();
+    // Allow health checks or static if needed
+    if (req.method === 'OPTIONS') return next();
+    const authHeader = (req.headers.authorization || '') as string;
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    if (!token) {
+      res.status(401).json({ ok: false, message: 'Unauthorized' });
+      return;
+    }
+    try {
+      jwt.verify(token, jwtSecret);
+      return next();
+    } catch (err) {
+      res.status(401).json({ ok: false, message: 'Invalid token' });
+    }
+  });
 
   const port = process.env.PORT || 3000;
   await app.listen(port);

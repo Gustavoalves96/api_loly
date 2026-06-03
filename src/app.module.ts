@@ -4,10 +4,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EstoqueModule } from './estoque/estoque.module';
 import { ClientesModule } from './clientes/clientes.module';
 import { EventosModule } from './eventos/eventos.module';
+import { AuthController } from './auth/auth.controller';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    // Carrega variáveis de ambiente de .env.local (dev) e .env (fallback)
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env.local', '.env'] }),
 
     TypeOrmModule.forRoot({
       type: 'postgres',
@@ -21,5 +23,6 @@ import { EventosModule } from './eventos/eventos.module';
     ClientesModule,
     EventosModule,
   ],
+  controllers: [AuthController],
 })
 export class AppModule {}
