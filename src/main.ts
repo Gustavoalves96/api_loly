@@ -7,10 +7,10 @@ async function bootstrap() {
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
 
-  // Libera o frontend React (porta 5173) acessar a API
-  app.enableCors({ origin: 'http://localhost:5173' });
+  app.enableCors({ origin: '*' }); // depois trocamos pela URL da Vercel
 
-  await app.listen(3000);
-  console.log('🚀 API rodando em http://localhost:3000');
+  const port = process.env.PORT || 3000;
+  await app.listen(port);
+  console.log(`🚀 API rodando na porta ${port}`);
 }
 void bootstrap();
