@@ -3,6 +3,9 @@ import * as jwt from 'jsonwebtoken';
 
 @Controller('auth')
 export class AuthController {
+  constructor() {
+    console.log('AUTH CONTROLLER CARREGADO');
+  }
   @Post('login')
   login(@Body() body: { password: string }) {
     const adminPass = process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORDS || 'changeme';
