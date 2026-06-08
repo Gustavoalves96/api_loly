@@ -35,6 +35,10 @@ export class Evento {
   @Column({ default: 0 })
   numeroCriancas: number;
 
+  // Número total de pessoas (adultos + crianças)
+  @Column({ default: 0 })
+  numeroPessoas: number;
+
   @Column({ nullable: true })
   buffet: string;
 

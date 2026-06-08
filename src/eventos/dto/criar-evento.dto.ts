@@ -28,6 +28,11 @@ export class CriarEventoDto {
   @IsOptional()
   numeroCriancas?: number;
 
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  numeroPessoas?: number;
+
   @IsString()
   @IsOptional()
   buffet?: string;
