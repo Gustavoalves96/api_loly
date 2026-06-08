@@ -3,14 +3,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventosController } from './eventos.controller';
 import { EventosService } from './eventos.service';
 import { Evento } from './evento.entity';
-import { ClientesModule } from '../clientes/clientes.module';
+import { Cliente } from '../clientes/cliente.entity';
+import { Lancamento } from '../financeiro/financeiro.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Evento]),
-    ClientesModule, // para ter acesso ao ClienteRepository
+    TypeOrmModule.forFeature([Evento, Cliente, Lancamento]),
   ],
   controllers: [EventosController],
   providers: [EventosService],
+  exports: [EventosService],
 })
 export class EventosModule {}
