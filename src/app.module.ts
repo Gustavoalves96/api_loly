@@ -6,10 +6,10 @@ import { ClientesModule } from './clientes/clientes.module';
 import { EventosModule } from './eventos/eventos.module';
 import { AuthController } from './auth/auth.controller';
 import { ContratosModule } from './contratos/contratos.module';
+import { FinanceiroModule } from './financeiro/financeiro.module';
 
 @Module({
   imports: [
-    // Carrega variáveis de ambiente de .env.local (dev) e .env (fallback)
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env.local', '.env'] }),
 
     TypeOrmModule.forRoot({
@@ -24,6 +24,7 @@ import { ContratosModule } from './contratos/contratos.module';
     ClientesModule,
     EventosModule,
     ContratosModule,
+    FinanceiroModule,
   ],
   controllers: [AuthController],
 })
