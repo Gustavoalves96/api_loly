@@ -1,13 +1,6 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
-  Body,
-  Param,
-  ParseIntPipe,
-  Query,
+  Controller, Get, Post, Patch, Delete,
+  Body, Param, ParseIntPipe, Query,
 } from '@nestjs/common';
 import { FinanceiroService } from './financeiro.service';
 import { CriarLancamentoDto } from './dto/criar-lancamento.dto';
@@ -17,7 +10,6 @@ export class FinanceiroController {
   constructor(private readonly financeiroService: FinanceiroService) {}
 
   // GET /financeiro/resumo-geral
-  // Usado pelos KPIs da tela inicial
   @Get('resumo-geral')
   resumoGeral() {
     return this.financeiroService.resumoGeral();
@@ -25,10 +17,7 @@ export class FinanceiroController {
 
   // GET /financeiro/resumo?mes=6&ano=2026
   @Get('resumo')
-  resumoMes(
-    @Query('mes') mes: string,
-    @Query('ano') ano: string,
-  ) {
+  resumoMes(@Query('mes') mes: string, @Query('ano') ano: string) {
     const hoje = new Date();
     return this.financeiroService.resumoMes(
       mes ? +mes : hoje.getMonth() + 1,
@@ -42,12 +31,15 @@ export class FinanceiroController {
     return this.financeiroService.pendencias();
   }
 
+  // GET /financeiro/atividade-recente
+  @Get('atividade-recente')
+  atividadeRecente() {
+    return this.financeiroService.atividadeRecente();
+  }
+
   // GET /financeiro/lancamentos?mes=6&ano=2026
   @Get('lancamentos')
-  listar(
-    @Query('mes') mes?: string,
-    @Query('ano') ano?: string,
-  ) {
+  listar(@Query('mes') mes?: string, @Query('ano') ano?: string) {
     return this.financeiroService.listar(
       mes ? +mes : undefined,
       ano ? +ano : undefined,

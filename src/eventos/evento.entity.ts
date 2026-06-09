@@ -1,18 +1,14 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  ManyToOne,
+  Entity, PrimaryGeneratedColumn, Column,
+  CreateDateColumn, UpdateDateColumn, ManyToOne,
 } from 'typeorm';
 import { Cliente } from '../clientes/cliente.entity';
 
 export enum StatusEvento {
-  PENDENTE = 'pendente',
-  CONFIRMADO = 'confirmado',
-  REALIZADO = 'realizado',
-  CANCELADO = 'cancelado',
+  PENDENTE    = 'pendente',
+  CONFIRMADO  = 'confirmado',
+  REALIZADO   = 'realizado',
+  CANCELADO   = 'cancelado',
 }
 
 @Entity('eventos')
@@ -35,18 +31,13 @@ export class Evento {
   @Column({ default: 0 })
   numeroCriancas: number;
 
-  // Número total de pessoas (adultos + crianças)
   @Column({ default: 0 })
   numeroPessoas: number;
 
   @Column({ nullable: true })
   buffet: string;
 
-  @Column({
-    type: 'enum',
-    enum: StatusEvento,
-    default: StatusEvento.PENDENTE,
-  })
+  @Column({ type: 'enum', enum: StatusEvento, default: StatusEvento.PENDENTE })
   status: StatusEvento;
 
   @Column('decimal', { precision: 10, scale: 2, default: 0 })
@@ -54,6 +45,10 @@ export class Evento {
 
   @Column('decimal', { precision: 10, scale: 2, default: 0 })
   valorPago: number;
+
+  // 1 = à vista, 2–12 = parcelado
+  @Column({ default: 1 })
+  parcelas: number;
 
   @Column({ nullable: true, type: 'text' })
   observacoes: string;

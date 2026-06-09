@@ -1,10 +1,5 @@
 import {
-  IsString,
-  IsOptional,
-  IsEnum,
-  IsNumber,
-  IsDateString,
-  Min,
+  IsString, IsOptional, IsEnum, IsNumber, IsDateString, Min, Max,
 } from 'class-validator';
 import { StatusEvento } from '../evento.entity';
 
@@ -50,6 +45,13 @@ export class CriarEventoDto {
   @Min(0)
   @IsOptional()
   valorPago?: number;
+
+  // 1 = à vista, 2–12 = parcelado
+  @IsNumber()
+  @Min(1)
+  @Max(12)
+  @IsOptional()
+  parcelas?: number;
 
   @IsString()
   @IsOptional()

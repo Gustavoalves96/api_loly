@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThan } from 'typeorm';
-import { Lancamento, StatusLancamento, TipoLancamento } from './financeiro.entity';
+import { Repository, Between, LessThanOrEqual } from 'typeorm';
+import { Lancamento, StatusLancamento, TipoLancamento, CategoriaPagamento } from './financeiro.entity';
 import { Evento, StatusEvento } from '../eventos/evento.entity';
 import { Cliente } from '../clientes/cliente.entity';
 import { CriarLancamentoDto } from './dto/criar-lancamento.dto';
@@ -50,17 +50,13 @@ export class FinanceiroService {
   async criar(dto: CriarLancamentoDto) {
     const { eventoId, clienteId, ...dados } = dto;
 
-    let evento = null;
-    if (eventoId) {
-      evento = await this.eventoRepo.findOne({ where: { id: eventoId } });
-    }
+    const evento = eventoId
+      ? await this.eventoRepo.findOne({ where: { id: eventoId } })
+      : null;
+    const cliente = clienteId
+      ? await this.clienteRepo.findOne({ where: { id: clienteId } })
+      : null;
 
-    let cliente = null;
-    if (clienteId) {
-      cliente = await this.clienteRepo.findOne({ where: { id: clienteId } });
-    }
-
-    // Se o lançamento for criado já como PAGO, preenchemos dataPagamento
     if (dados.status === StatusLancamento.PAGO && !dados.dataPagamento) {
       dados.dataPagamento = new Date().toISOString().split('T')[0];
     }
@@ -73,28 +69,23 @@ export class FinanceiroService {
     await this.buscar(id);
     const { eventoId, clienteId, ...dados } = dto;
 
-    // Se estiver marcando como PAGO agora, registra data
     if (dados.status === StatusLancamento.PAGO && !dados.dataPagamento) {
       dados.dataPagamento = new Date().toISOString().split('T')[0];
     }
 
-    if (eventoId || clienteId) {
-      const evento = eventoId
+    const extras: any = {};
+    if (eventoId !== undefined) {
+      extras.evento = eventoId
         ? await this.eventoRepo.findOne({ where: { id: eventoId } })
-        : undefined;
-      const cliente = clienteId
+        : null;
+    }
+    if (clienteId !== undefined) {
+      extras.cliente = clienteId
         ? await this.clienteRepo.findOne({ where: { id: clienteId } })
-        : undefined;
-      await this.lancamentoRepo.save({
-        id,
-        ...dados,
-        ...(evento !== undefined && { evento }),
-        ...(cliente !== undefined && { cliente }),
-      });
-    } else {
-      await this.lancamentoRepo.update(id, dados as any);
+        : null;
     }
 
+    await this.lancamentoRepo.save({ id, ...dados, ...extras });
     return this.buscar(id);
   }
 
@@ -104,7 +95,7 @@ export class FinanceiroService {
     return { mensagem: 'Lançamento removido com sucesso' };
   }
 
-  // ─── Resumo do mês (para KPIs da tela inicial e módulo financeiro) ───────
+  // ─── Resumo do mês ────────────────────────────────────────────────────────
 
   async resumoMes(mes: number, ano: number) {
     const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
@@ -123,88 +114,79 @@ export class FinanceiroService {
       .reduce((acc, l) => acc + Number(l.valor), 0);
 
     const receitasPagas = lancamentos
-      .filter(
-        (l) =>
-          l.tipo === TipoLancamento.RECEITA &&
-          l.status === StatusLancamento.PAGO,
-      )
+      .filter((l) => l.tipo === TipoLancamento.RECEITA && l.status === StatusLancamento.PAGO)
       .reduce((acc, l) => acc + Number(l.valor), 0);
 
     const receitasPendentes = lancamentos
-      .filter(
-        (l) =>
-          l.tipo === TipoLancamento.RECEITA &&
-          l.status === StatusLancamento.PENDENTE,
-      )
+      .filter((l) => l.tipo === TipoLancamento.RECEITA && l.status === StatusLancamento.PENDENTE)
       .reduce((acc, l) => acc + Number(l.valor), 0);
 
     const taxaAdimplencia =
-      totalReceitas > 0
-        ? Math.round((receitasPagas / totalReceitas) * 100)
-        : 100;
+      totalReceitas > 0 ? Math.round((receitasPagas / totalReceitas) * 100) : 100;
 
-    // Festas do mês (eventos não cancelados)
     const festasDoMes = await this.eventoRepo.count({
-      where: {
-        data: Between(inicio, fim),
-        status: StatusEvento.CONFIRMADO,
-      },
+      where: { data: Between(inicio, fim), status: StatusEvento.CONFIRMADO },
     });
 
     return {
-      mes,
-      ano,
-      totalReceitas,
-      totalDespesas,
+      mes, ano, totalReceitas, totalDespesas,
       saldo: totalReceitas - totalDespesas,
-      receitasPagas,
-      receitasPendentes,
-      taxaAdimplencia,
-      festasDoMes,
+      receitasPagas, receitasPendentes, taxaAdimplencia, festasDoMes,
     };
   }
 
-  // ─── Pendências (lançamentos PENDENTES com vencimento passado) ───────────
+  // ─── Pendências ───────────────────────────────────────────────────────────
+  // Inclui: lançamentos atrasados + eventos com saldo em aberto (passados E futuros)
 
   async pendencias() {
     const hoje = new Date().toISOString().split('T')[0];
 
-    // Lançamentos com vencimento passado e ainda pendentes
     const lancamentosAtrasados = await this.lancamentoRepo.find({
       where: {
         ativo: true,
         status: StatusLancamento.PENDENTE,
-        dataVencimento: LessThan(hoje),
+        dataVencimento: LessThanOrEqual(hoje),
       },
       relations: { evento: true, cliente: true },
       order: { dataVencimento: 'ASC' },
     });
 
-    // Eventos com saldo devedor (valorPago < valorTotal) e data já passada
+    // Todos os eventos não cancelados com saldo em aberto (independente da data)
     const eventosComDebt = await this.eventoRepo
       .createQueryBuilder('e')
       .leftJoinAndSelect('e.cliente', 'c')
-      .where('e.data < :hoje', { hoje })
-      .andWhere('e.status != :cancelado', { cancelado: StatusEvento.CANCELADO })
+      .where('e.status != :cancelado', { cancelado: StatusEvento.CANCELADO })
       .andWhere('e.valorTotal > e.valorPago')
+      .andWhere('e.valorTotal > 0')
       .orderBy('e.data', 'ASC')
       .getMany();
+
+    // Parcelas futuras pendentes (para mostrar no widget)
+    const parcelasFuturas = await this.lancamentoRepo.find({
+      where: {
+        ativo: true,
+        status: StatusLancamento.PENDENTE,
+        categoria: CategoriaPagamento.PARCELA,
+      },
+      relations: { evento: true, cliente: true },
+      order: { dataVencimento: 'ASC' },
+      take: 10,
+    });
 
     return {
       lancamentosAtrasados,
       eventosComDebt,
+      parcelasFuturas,
       totalPendenteEmLancamentos: lancamentosAtrasados.reduce(
-        (acc, l) => acc + Number(l.valor),
-        0,
+        (acc, l) => acc + Number(l.valor), 0,
       ),
       totalDebtEmEventos: eventosComDebt.reduce(
-        (acc, e) => acc + (Number(e.valorTotal) - Number(e.valorPago)),
-        0,
+        (acc, e) => acc + (Number(e.valorTotal) - Number(e.valorPago)), 0,
       ),
     };
   }
 
-  // ─── Resumo geral (para dashboard / tela inicial) ────────────────────────
+  // ─── Resumo geral (dashboard) ─────────────────────────────────────────────
 
   async resumoGeral() {
     const hoje = new Date();
@@ -214,12 +196,78 @@ export class FinanceiroService {
     const resumo = await this.resumoMes(mes, ano);
     const pend = await this.pendencias();
 
-    return {
-      ...resumo,
-      totalPendencias:
-        pend.totalPendenteEmLancamentos + pend.totalDebtEmEventos,
-      qtdPendencias:
-        pend.lancamentosAtrasados.length + pend.eventosComDebt.length,
-    };
+    const totalPendencias =
+      pend.totalPendenteEmLancamentos + pend.totalDebtEmEventos;
+
+    const qtdPendencias =
+      pend.lancamentosAtrasados.length + pend.eventosComDebt.length;
+
+    return { ...resumo, totalPendencias, qtdPendencias };
+  }
+
+  // ─── Atividade recente ────────────────────────────────────────────────────
+
+  async atividadeRecente() {
+    // Últimos lançamentos criados/atualizados
+    const lancamentos = await this.lancamentoRepo.find({
+      where: { ativo: true },
+      relations: { cliente: true, evento: true },
+      order: { atualizadoEm: 'DESC' },
+      take: 5,
+    });
+
+    // Últimos eventos criados
+    const eventos = await this.eventoRepo.find({
+      relations: { cliente: true },
+      order: { criadoEm: 'DESC' },
+      take: 5,
+    });
+
+    // Últimos clientes cadastrados
+    const clientes = await this.clienteRepo.find({
+      order: { criadoEm: 'DESC' },
+      take: 3,
+    });
+
+    const atividades = [
+      ...lancamentos.map((l) => ({
+        icon: l.tipo === TipoLancamento.RECEITA ? '💵' : '📤',
+        iconClass:
+          l.tipo === TipoLancamento.RECEITA
+            ? 'bg-[#D7FBF3] text-[#0B7A5E]'
+            : 'bg-[#FFE8F1] text-[#C9365A]',
+        description:
+          l.status === StatusLancamento.PAGO
+            ? `Pagamento recebido${l.cliente ? ` de ${l.cliente.nome}` : ''} — R$ ${Number(l.valor).toFixed(2).replace('.', ',')}`
+            : `Lançamento${l.cliente ? ` para ${l.cliente.nome}` : ''} — R$ ${Number(l.valor).toFixed(2).replace('.', ',')}`,
+        time: new Date(l.atualizadoEm).toLocaleDateString('pt-BR', {
+          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+        }),
+        ts: new Date(l.atualizadoEm).getTime(),
+      })),
+      ...eventos.map((e) => ({
+        icon: '🎉',
+        iconClass: 'bg-[#EEE4FF] text-[#6B35C1]',
+        description: `Reserva${e.temaFesta ? ` ${e.temaFesta}` : ''} em ${new Date(e.data + 'T12:00:00').toLocaleDateString('pt-BR')}${e.cliente ? ` — ${e.cliente.nome}` : ''}`,
+        time: new Date(e.criadoEm).toLocaleDateString('pt-BR', {
+          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+        }),
+        ts: new Date(e.criadoEm).getTime(),
+      })),
+      ...clientes.map((c) => ({
+        icon: '👪',
+        iconClass: 'bg-[#FFF5D6] text-[#A07800]',
+        description: `Novo cliente cadastrado — ${c.nome}`,
+        time: new Date(c.criadoEm).toLocaleDateString('pt-BR', {
+          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+        }),
+        ts: new Date(c.criadoEm).getTime(),
+      })),
+    ]
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 8)
+      .map(({ ts, ...rest }) => rest);
+
+    return atividades;
   }
 }

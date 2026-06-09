@@ -4,7 +4,9 @@ import { Repository, Between } from 'typeorm';
 import { Evento } from './evento.entity';
 import { Cliente } from '../clientes/cliente.entity';
 import { CriarEventoDto } from './dto/criar-evento.dto';
-import { Lancamento, TipoLancamento, StatusLancamento, CategoriaPagamento } from '../financeiro/financeiro.entity';
+import {
+  Lancamento, TipoLancamento, StatusLancamento, CategoriaPagamento,
+} from '../financeiro/financeiro.entity';
 
 @Injectable()
 export class EventosService {
@@ -46,18 +48,13 @@ export class EventosService {
 
   async criar(dto: CriarEventoDto) {
     const { clienteId, ...dados } = dto;
-
-    let cliente = null;
-    if (clienteId) {
-      cliente = await this.clienteRepo.findOne({ where: { id: clienteId } });
-    }
+    const cliente = clienteId
+      ? await this.clienteRepo.findOne({ where: { id: clienteId } })
+      : null;
 
     const evento = this.eventoRepo.create({ ...dados, cliente });
     const salvo = await this.eventoRepo.save(evento);
-
-    // Sincroniza lançamentos financeiros automaticamente
     await this.sincronizarLancamentos(salvo, cliente);
-
     return this.buscar(salvo.id);
   }
 
@@ -65,25 +62,22 @@ export class EventosService {
     await this.buscar(id);
     const { clienteId, ...dados } = dto;
 
-    let cliente = undefined;
-    if (clienteId) {
-      cliente = await this.clienteRepo.findOne({ where: { id: clienteId } });
+    if (clienteId !== undefined) {
+      const cliente = clienteId
+        ? await this.clienteRepo.findOne({ where: { id: clienteId } })
+        : null;
       await this.eventoRepo.save({ id, ...dados, cliente });
     } else {
       await this.eventoRepo.update(id, dados as any);
     }
 
     const atualizado = await this.buscar(id);
-
-    // Sincroniza lançamentos financeiros automaticamente
     await this.sincronizarLancamentos(atualizado, atualizado.cliente);
-
     return atualizado;
   }
 
   async deletar(id: number) {
     await this.buscar(id);
-    // Remove lançamentos vinculados ao evento
     await this.lancamentoRepo.delete({ evento: { id } });
     await this.eventoRepo.delete(id);
     return { mensagem: 'Evento removido com sucesso' };
@@ -101,8 +95,7 @@ export class EventosService {
   async proximos() {
     const hoje = new Date().toISOString().split('T')[0];
     const em30dias = new Date(Date.now() + 30 * 86400000)
-      .toISOString()
-      .split('T')[0];
+      .toISOString().split('T')[0];
     return this.eventoRepo.find({
       where: { data: Between(hoje, em30dias) },
       relations: { cliente: true },
@@ -112,99 +105,118 @@ export class EventosService {
 
   // ─── Sincronização automática de lançamentos ─────────────────────────────
   //
-  // Regra:
-  //   valorPago > 0  → cria/atualiza lançamento de SINAL (pago)
-  //   valorTotal - valorPago > 0 → cria/atualiza lançamento de PAGAMENTO FINAL (pendente)
-  //   valorPago === valorTotal   → marca pagamento final como pago
+  // Lógica:
+  //   parcelas = 1 → à vista: sinal (pago) + pagamento_final (pendente/pago)
+  //   parcelas > 1 → sinal (pago se valorPago > 0) + N parcelas mensais
   //
   private async sincronizarLancamentos(evento: Evento, cliente: Cliente | null) {
     const total = Number(evento.valorTotal) || 0;
     const pago = Number(evento.valorPago) || 0;
-    const restante = total - pago;
+    const parcelas = Number((evento as any).parcelas) || 1;
 
-    if (total === 0) return; // Sem valor definido, nada a sincronizar
+    if (total === 0) return;
 
-    // Busca lançamentos existentes deste evento
+    // Remove lançamentos existentes do tipo parcela/pagamento_final/sinal
+    // para recriar com os valores corretos
     const existentes = await this.lancamentoRepo.find({
       where: { evento: { id: evento.id }, ativo: true },
     });
 
-    const lancamentoSinal = existentes.find(
+    // Separa sinal dos demais para não recriar desnecessariamente
+    const lancSinal = existentes.find(
       (l) => l.categoria === CategoriaPagamento.SINAL,
     );
-    const lancamentoFinal = existentes.find(
-      (l) => l.categoria === CategoriaPagamento.PAGAMENTO_FINAL,
+    const outrosLanc = existentes.filter(
+      (l) => l.categoria !== CategoriaPagamento.SINAL,
     );
 
-    // ── Lançamento de SINAL (valor já pago) ──────────────────────────────
+    // Remove parcelas/pagamento_final antigos (serão recriados)
+    if (outrosLanc.length > 0) {
+      await this.lancamentoRepo.delete(outrosLanc.map((l) => l.id));
+    }
+
+    const descBase = `${evento.temaFesta ? evento.temaFesta : 'Festa'}${cliente ? ` — ${cliente.nome}` : ''}`;
+    const dataEvento = evento.data;
+
+    // ── Sinal (valor já pago) ─────────────────────────────────────────────
     if (pago > 0) {
       const dadosSinal = {
         tipo: TipoLancamento.RECEITA,
         status: StatusLancamento.PAGO,
         categoria: CategoriaPagamento.SINAL,
-        descricao: `Sinal${evento.temaFesta ? ` — ${evento.temaFesta}` : ''}${cliente ? ` (${cliente.nome})` : ''}`,
+        descricao: `Sinal — ${descBase}`,
         valor: pago,
-        dataVencimento: evento.data,
-        dataPagamento: evento.data,
+        dataVencimento: dataEvento,
+        dataPagamento: dataEvento,
         evento,
         cliente,
         ativo: true,
       };
-
-      if (lancamentoSinal) {
-        await this.lancamentoRepo.update(lancamentoSinal.id, {
+      if (lancSinal) {
+        await this.lancamentoRepo.update(lancSinal.id, {
           valor: pago,
           descricao: dadosSinal.descricao,
-          dataPagamento: evento.data,
         });
       } else {
         await this.lancamentoRepo.save(
           this.lancamentoRepo.create(dadosSinal),
         );
       }
-    } else if (lancamentoSinal) {
-      // Zeraram o valor pago — desativa o lançamento de sinal
-      await this.lancamentoRepo.update(lancamentoSinal.id, { ativo: false });
+    } else if (lancSinal) {
+      await this.lancamentoRepo.update(lancSinal.id, { ativo: false });
     }
 
-    // ── Lançamento de PAGAMENTO FINAL (valor restante) ───────────────────
-    if (restante > 0) {
-      const statusFinal =
-        restante <= 0 ? StatusLancamento.PAGO : StatusLancamento.PENDENTE;
+    const restante = total - pago;
+    if (restante <= 0) return;
 
-      const dadosFinal = {
-        tipo: TipoLancamento.RECEITA,
-        status: statusFinal,
-        categoria: CategoriaPagamento.PAGAMENTO_FINAL,
-        descricao: `Restante${evento.temaFesta ? ` — ${evento.temaFesta}` : ''}${cliente ? ` (${cliente.nome})` : ''}`,
-        valor: restante,
-        dataVencimento: evento.data,
-        dataPagamento: statusFinal === StatusLancamento.PAGO ? evento.data : null,
-        evento,
-        cliente,
-        ativo: true,
-      };
+    // ── Parcelamento ──────────────────────────────────────────────────────
+    const dataBase = new Date(dataEvento + 'T12:00:00');
 
-      if (lancamentoFinal) {
-        await this.lancamentoRepo.update(lancamentoFinal.id, {
+    if (parcelas === 1) {
+      // À vista: uma única parcela no vencimento da festa
+      await this.lancamentoRepo.save(
+        this.lancamentoRepo.create({
+          tipo: TipoLancamento.RECEITA,
+          status: StatusLancamento.PENDENTE,
+          categoria: CategoriaPagamento.PAGAMENTO_FINAL,
+          descricao: `Pagamento final — ${descBase}`,
           valor: restante,
-          status: statusFinal,
-          descricao: dadosFinal.descricao,
-          dataPagamento: dadosFinal.dataPagamento,
-        });
-      } else {
+          dataVencimento: dataEvento,
+          evento,
+          cliente,
+          ativo: true,
+        }),
+      );
+    } else {
+      // Parcelado: cria N parcelas mensais a partir do mês da festa
+      const valorParcela = Math.round((restante / parcelas) * 100) / 100;
+      const ajuste = Math.round((restante - valorParcela * parcelas) * 100) / 100;
+
+      for (let i = 0; i < parcelas; i++) {
+        const dtParcela = new Date(dataBase);
+        dtParcela.setMonth(dtParcela.getMonth() + i);
+        const vencimento = dtParcela.toISOString().split('T')[0];
+
+        // Última parcela absorve o ajuste de arredondamento
+        const valorFinal =
+          i === parcelas - 1
+            ? Math.round((valorParcela + ajuste) * 100) / 100
+            : valorParcela;
+
         await this.lancamentoRepo.save(
-          this.lancamentoRepo.create(dadosFinal),
+          this.lancamentoRepo.create({
+            tipo: TipoLancamento.RECEITA,
+            status: StatusLancamento.PENDENTE,
+            categoria: CategoriaPagamento.PARCELA,
+            descricao: `Parcela ${i + 1}/${parcelas} — ${descBase}`,
+            valor: valorFinal,
+            dataVencimento: vencimento,
+            evento,
+            cliente,
+            ativo: true,
+          }),
         );
       }
-    } else if (lancamentoFinal) {
-      // Restante zerou (pagamento completo) — marca como pago
-      await this.lancamentoRepo.update(lancamentoFinal.id, {
-        status: StatusLancamento.PAGO,
-        dataPagamento: evento.data,
-        valor: 0,
-        ativo: restante === 0 ? false : true,
-      });
     }
   }
 }
