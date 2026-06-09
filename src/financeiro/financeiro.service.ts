@@ -194,13 +194,21 @@ export class FinanceiroService {
     const ano = hoje.getFullYear();
 
     const resumo = await this.resumoMes(mes, ano);
-    const pend = await this.pendencias();
 
-    const totalPendencias =
-      pend.totalPendenteEmLancamentos + pend.totalDebtEmEventos;
+    // Usa apenas lançamentos pendentes como fonte da verdade
+    // para evitar dupla contagem com os deltas de eventos
+    const lancamentosPendentes = await this.lancamentoRepo.find({
+      where: {
+        ativo: true,
+        status: StatusLancamento.PENDENTE,
+        tipo: TipoLancamento.RECEITA,
+      },
+    });
 
-    const qtdPendencias =
-      pend.lancamentosAtrasados.length + pend.eventosComDebt.length;
+    const totalPendencias = lancamentosPendentes.reduce(
+      (acc, l) => acc + Number(l.valor), 0,
+    );
+    const qtdPendencias = lancamentosPendentes.length;
 
     return { ...resumo, totalPendencias, qtdPendencias };
   }
