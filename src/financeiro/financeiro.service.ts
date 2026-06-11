@@ -66,7 +66,7 @@ export class FinanceiroService {
   }
 
   async atualizar(id: number, dto: Partial<CriarLancamentoDto>) {
-    await this.buscar(id);
+    const lancamentoAtual = await this.buscar(id);
     const { eventoId, clienteId, ...dados } = dto;
 
     if (dados.status === StatusLancamento.PAGO && !dados.dataPagamento) {
@@ -86,7 +86,31 @@ export class FinanceiroService {
     }
 
     await this.lancamentoRepo.save({ id, ...dados, ...extras });
+
+    // Se marcou como pago e tem evento vinculado, atualiza valorPago do evento
+    if (dados.status === StatusLancamento.PAGO && lancamentoAtual.evento) {
+      await this.recalcularValorPagoEvento(lancamentoAtual.evento.id);
+    }
+
     return this.buscar(id);
+  }
+
+  // Soma todos os lançamentos PAGOS do evento e atualiza valorPago
+  private async recalcularValorPagoEvento(eventoId: number) {
+    const lancamentosPagos = await this.lancamentoRepo.find({
+      where: {
+        evento: { id: eventoId },
+        tipo: TipoLancamento.RECEITA,
+        status: StatusLancamento.PAGO,
+        ativo: true,
+      },
+    });
+
+    const totalPago = lancamentosPagos.reduce(
+      (acc, l) => acc + Number(l.valor), 0,
+    );
+
+    await this.eventoRepo.update(eventoId, { valorPago: totalPago });
   }
 
   async deletar(id: number) {

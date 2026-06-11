@@ -188,13 +188,16 @@ export class EventosService {
         }),
       );
     } else {
-      // Parcelado: cria N parcelas mensais a partir do mês da festa
+      // Parcelado:
+      // - Se tem sinal (pago > 0): 1ª parcela começa no mês SEGUINTE à festa
+      // - Se não tem sinal: 1ª parcela começa no mês DA festa
       const valorParcela = Math.round((restante / parcelas) * 100) / 100;
       const ajuste = Math.round((restante - valorParcela * parcelas) * 100) / 100;
 
       for (let i = 0; i < parcelas; i++) {
         const dtParcela = new Date(dataBase);
-        dtParcela.setMonth(dtParcela.getMonth() + i);
+        const offsetMeses = pago > 0 ? i + 1 : i; // com sinal: começa no mês seguinte
+        dtParcela.setMonth(dtParcela.getMonth() + offsetMeses);
         const vencimento = dtParcela.toISOString().split('T')[0];
 
         // Última parcela absorve o ajuste de arredondamento
