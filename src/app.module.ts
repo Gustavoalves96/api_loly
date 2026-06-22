@@ -18,7 +18,12 @@ import { FinanceiroModule } from './financeiro/financeiro.module';
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      // Valida o certificado do banco por padrão (evita MITM). Só desative
+      // (DATABASE_SSL_NO_VERIFY=true) se o provedor usar certificado self-signed.
+      ssl:
+        process.env.DATABASE_SSL_NO_VERIFY === 'true'
+          ? { rejectUnauthorized: false }
+          : { rejectUnauthorized: true },
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       synchronize: process.env.NODE_ENV !== 'production',
     }),

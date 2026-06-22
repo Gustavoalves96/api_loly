@@ -1,14 +1,38 @@
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
-import * as jwt from 'jsonwebtoken';
-import { Request, Response, NextFunction } from 'express';
+import { Logger, ValidationPipe } from '@nestjs/common';
+import { validateEnv } from './config/validate-env';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { AllExceptionsFilter } from './common/http-exception.filter';
 
 async function bootstrap() {
-  console.log('VERSAO NOVA DA API');
+  // Falha cedo caso variáveis essenciais (segredos) estejam ausentes.
+  validateEnv();
+
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
+
+  // Padroniza respostas de erro e evita vazar stack traces.
+  app.useGlobalFilters(new AllExceptionsFilter());
+
+  // Proteção JWT global; rotas marcadas com @Public() são liberadas.
+  app.useGlobalGuards(new JwtAuthGuard(app.get(Reflector)));
+
+  // Documentação Swagger em /docs. As rotas do Swagger não passam pelo guard
+  // global do Nest, então só expomos a doc fora de produção para não vazar o schema.
+  if (process.env.NODE_ENV !== 'production') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Lolypopy API')
+      .setDescription('API de gestão do salão Lolypopy')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('docs', app, document);
+  }
 
   // Restringe CORS usando a variável de ambiente FRONTEND_ORIGIN
   // Aceita múltiplos domínios separados por vírgula (ex: "https://a.com,https://b.com")
@@ -23,30 +47,8 @@ async function bootstrap() {
     },
   });
 
-  console.log('CORS allowed origins:', allowedOrigins);
-
-  // Middleware simples para proteger rotas com JWT. Exclui /auth routes.
-  const jwtSecret = process.env.JWT_SECRET || 'default_jwt_secret';
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.path.startsWith('/auth')) return next();
-    // Allow health checks or static if needed
-    if (req.method === 'OPTIONS') return next();
-    const authHeader = (req.headers.authorization || '') as string;
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
-    if (!token) {
-      res.status(401).json({ ok: false, message: 'Unauthorized' });
-      return;
-    }
-    try {
-      jwt.verify(token, jwtSecret);
-      return next();
-    } catch (err) {
-      res.status(401).json({ ok: false, message: 'Invalid token' });
-    }
-  });
-
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  console.log(`🚀 API rodando na porta ${port}`);
+  logger.log(`🚀 API rodando na porta ${port}`);
 }
 void bootstrap();
