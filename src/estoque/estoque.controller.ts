@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   ParseIntPipe,
+  Query,
 } from '@nestjs/common';
 import { EstoqueService } from './estoque.service';
 import { CriarProdutoDto } from './dto/criar-produto.dto';
@@ -16,10 +17,13 @@ import { MovimentacaoDto } from './dto/movimentacao.dto';
 export class EstoqueController {
   constructor(private readonly estoqueService: EstoqueService) {}
 
-  // GET /estoque/produtos
+  // GET /estoque/produtos?page=1&limit=20
   @Get('produtos')
-  listar() {
-    return this.estoqueService.listarProdutos();
+  listar(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.estoqueService.listarProdutos(
+      page ? Number(page) : undefined,
+      limit ? Number(limit) : undefined,
+    );
   }
 
   // GET /estoque/alertas

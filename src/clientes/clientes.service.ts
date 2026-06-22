@@ -11,20 +11,25 @@ export class ClientesService {
     private clienteRepo: Repository<Cliente>,
   ) {}
 
-  async listar(busca?: string) {
-    if (busca) {
-      return this.clienteRepo.find({
-        where: [
+  async listar(busca?: string, page?: number, limit?: number) {
+    const where = busca
+      ? [
           { nome: Like(`%${busca}%`), ativo: true },
           { telefone: Like(`%${busca}%`), ativo: true },
-        ],
+        ]
+      : { ativo: true };
+
+    if (page && limit) {
+      const [data, total] = await this.clienteRepo.findAndCount({
+        where,
         order: { nome: 'ASC' },
+        skip: (page - 1) * limit,
+        take: limit,
       });
+      return { data, total, page, limit };
     }
-    return this.clienteRepo.find({
-      where: { ativo: true },
-      order: { nome: 'ASC' },
-    });
+
+    return this.clienteRepo.find({ where, order: { nome: 'ASC' } });
   }
 
   async buscar(id: number) {

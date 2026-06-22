@@ -36,6 +36,9 @@ export class Cliente {
   @Column({ nullable: true, type: 'date' })
   dataNascimentoFilho: string;
 
+  @Column({ nullable: true, type: 'int' })
+  idadeAniversariante: number;
+
   @Column({ nullable: true, type: 'text' })
   observacoes: string;
 

@@ -22,7 +22,17 @@ export class EstoqueService {
 
   // --- PRODUTOS ---
 
-  async listarProdutos() {
+  async listarProdutos(page?: number, limit?: number) {
+    if (page && limit) {
+      const [data, total] = await this.produtoRepo.findAndCount({
+        where: { ativo: true },
+        order: { nome: 'ASC' },
+        skip: (page - 1) * limit,
+        take: limit,
+      });
+      return { data, total, page, limit };
+    }
+
     return this.produtoRepo.find({
       where: { ativo: true },
       order: { nome: 'ASC' },

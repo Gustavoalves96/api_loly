@@ -9,10 +9,18 @@ import { CriarClienteDto } from './dto/criar-cliente.dto';
 export class ClientesController {
   constructor(private readonly clientesService: ClientesService) {}
 
-  // GET /clientes?busca=João
+  // GET /clientes?busca=João&page=1&limit=20
   @Get()
-  listar(@Query('busca') busca?: string) {
-    return this.clientesService.listar(busca);
+  listar(
+    @Query('busca') busca?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.clientesService.listar(
+      busca,
+      page ? Number(page) : undefined,
+      limit ? Number(limit) : undefined,
+    );
   }
 
   // GET /clientes/:id
