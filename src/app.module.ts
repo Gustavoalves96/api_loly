@@ -17,7 +17,7 @@ import { FinanceiroModule } from './financeiro/financeiro.module';
       url: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false },
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: true,
+      synchronize: process.env.NODE_ENV !== 'production',
     }),
 
     EstoqueModule,
