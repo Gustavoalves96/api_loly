@@ -34,8 +34,18 @@ export class Evento {
   @Column({ default: 0 })
   numeroPessoas: number;
 
+  // Nome do buffet escolhido (snapshot para exibição em listas).
   @Column({ nullable: true })
   buffet: string;
+
+  // Qual modelo de buffet foi escolhido (referência ao cadastro).
+  @Column({ nullable: true })
+  buffetId: number;
+
+  // Itens efetivamente usados nesta festa. Começam como cópia do modelo, mas
+  // podem ser ajustados por evento — por isso ficam salvos aqui, não no buffet.
+  @Column({ type: 'jsonb', nullable: true })
+  buffetItens: { nome: string; quantidade?: string }[];
 
   @Column({ type: 'enum', enum: StatusEvento, default: StatusEvento.PENDENTE })
   status: StatusEvento;

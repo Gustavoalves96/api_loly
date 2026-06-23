@@ -1,7 +1,18 @@
 import {
   IsString, IsOptional, IsEnum, IsNumber, IsDateString, Min, Max,
+  IsArray, ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { StatusEvento } from '../evento.entity';
+
+class BuffetItemEventoDto {
+  @IsString()
+  nome: string;
+
+  @IsString()
+  @IsOptional()
+  quantidade?: string;
+}
 
 export class CriarEventoDto {
   @IsNumber()
@@ -31,6 +42,16 @@ export class CriarEventoDto {
   @IsString()
   @IsOptional()
   buffet?: string;
+
+  @IsNumber()
+  @IsOptional()
+  buffetId?: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BuffetItemEventoDto)
+  @IsOptional()
+  buffetItens?: BuffetItemEventoDto[];
 
   @IsEnum(StatusEvento)
   @IsOptional()

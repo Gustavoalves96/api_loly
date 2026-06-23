@@ -8,6 +8,7 @@ import { EventosModule } from './eventos/eventos.module';
 import { AuthController } from './auth/auth.controller';
 import { ContratosModule } from './contratos/contratos.module';
 import { FinanceiroModule } from './financeiro/financeiro.module';
+import { BuffetsModule } from './buffets/buffets.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { FinanceiroModule } from './financeiro/financeiro.module';
     EventosModule,
     ContratosModule,
     FinanceiroModule,
+    BuffetsModule,
   ],
   controllers: [AuthController],
 })
